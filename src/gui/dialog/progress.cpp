@@ -42,7 +42,7 @@ namespace MR
           }
           else {
             if (reinterpret_cast<Timer*>(p.data)->elapsed() > 1.0) 
-              QMetaObject::invokeMethod (GUI::App::application, "displayProgressBar", Q_ARG (void*, reinterpret_cast<void*>(&p)));
+              QMetaObject::invokeMethod (GUI::App::application, "displayProgressBar", Q_ARG (QString, p.text.c_str()), Q_ARG (int, p.value), Q_ARG(bool, p.multiplier));
           }
         }
 
