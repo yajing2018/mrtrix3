@@ -21,6 +21,7 @@
 */
 
 #include <cassert>
+#include "gui/gui.h"
 #include "gui/dialog/progress.h"
 
 namespace MR
@@ -32,33 +33,25 @@ namespace MR
       namespace ProgressBar
       {
 
-        namespace {
-          QWidget* main_window = nullptr;
-        }
-
-        void set_main_window (QWidget* window) {
-          main_window = window;
-        }
-
         void display (ProgressInfo& p)
         {
           if (!p.data) {
-            INFO (App::NAME + ": " + p.text);
-            QMetaObject::invokeMethod (main_window, "startProgressBar");
+            INFO (MR::App::NAME + ": " + p.text);
+            QMetaObject::invokeMethod (GUI::App::application, "startProgressBar");
             p.data = new Timer;
           }
           else {
             if (reinterpret_cast<Timer*>(p.data)->elapsed() > 1.0) 
-              QMetaObject::invokeMethod (main_window, "displayProgressBar", Q_ARG (void*, reinterpret_cast<void*>(&p)));
+              QMetaObject::invokeMethod (GUI::App::application, "displayProgressBar", Q_ARG (void*, reinterpret_cast<void*>(&p)));
           }
         }
 
 
         void done (ProgressInfo& p)
         {
-          INFO (App::NAME + ": " + p.text + " [done]");
+          INFO (MR::App::NAME + ": " + p.text + " [done]");
           if (p.data) 
-            QMetaObject::invokeMethod (main_window, "doneProgressBar");
+            QMetaObject::invokeMethod (GUI::App::application, "doneProgressBar");
           p.data = nullptr;
         }
 
