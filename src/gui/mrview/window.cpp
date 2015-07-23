@@ -1374,9 +1374,60 @@ namespace MR
       }
 
 
+      // THREADED PROGRESSBAR TEST EXAMPLE:
+      namespace { 
+        QThread* running_tread = nullptr;
+      }
+
+      void Window::thread_finished() {
+        TRACE;
+        delete running_tread;
+        running_tread = nullptr;
+      }
+      // END THREADED PROGRESSBAR TEST EXAMPLE
+
+
+
       void Window::mousePressEventGL (QMouseEvent* event)
       {
         assert (mode);
+
+        // THREADED PROGRESSBAR TEST EXAMPLE:
+        if (event->buttons() == ( Qt::LeftButton | Qt::RightButton)) {
+
+          if (false) { // in same thread:
+
+            ProgressBar progress ("a progressbar", 10);
+            for (size_t n = 0; n < 10; ++n) {
+              TRACE;
+              sleep(1);
+              ++progress;
+            }
+
+          }
+          else { // in separate thread:
+            if (running_tread)
+              return;
+
+            class MyThread : public QThread {
+              void run () override { 
+                ProgressBar progress ("a progressbar", 10);
+                for (size_t n = 0; n < 10; ++n) {
+                  sleep(1);
+                  ++progress;
+                }
+              }
+            };
+
+            running_tread = new MyThread;
+
+            connect (running_tread, SIGNAL (finished()), this, SLOT (thread_finished()));
+            running_tread->start();
+          }
+
+          return;
+        }
+        // END THREADED PROGRESSBAR TEST EXAMPLE
 
         grab_mouse_state (event);
         if (image()) 
@@ -1521,11 +1572,11 @@ namespace MR
       bool Window::gestureEventGL (QGestureEvent* event) 
       {
         assert (mode);
-        
+
         if (QGesture *swipe = event->gesture (Qt::SwipeGesture)) {
           QSwipeGesture* e = static_cast<QSwipeGesture*> (swipe);
           int dx = e->horizontalDirection() == QSwipeGesture::Left ? -1 : ( 
-             e->horizontalDirection() == QSwipeGesture::Right ? 1 : 0); 
+              e->horizontalDirection() == QSwipeGesture::Right ? 1 : 0); 
           if (dx != 0 && image_group->actions().size() > 1) {
             QAction* action = image_group->checkedAction();
             int N = image_group->actions().size();

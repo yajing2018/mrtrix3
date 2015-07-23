@@ -175,6 +175,9 @@ namespace MR
 
           void process_commandline_options ();
 
+          // FOR THREADED PROGRESSBAR TEST EXAMPLE:
+          void thread_finished();
+
 
 
         private:
