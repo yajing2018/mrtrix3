@@ -22,7 +22,7 @@
 
 #include "gui/mrview/tool/connectome/connectome.h"
 
-#include "thread_queue.h"
+//#include "thread_queue.h"
 
 #include "file/path.h"
 #include "gui/dialog/file.h"
@@ -33,7 +33,7 @@
 #include "image/info.h"
 #include "image/loop.h"
 #include "image/nav.h"
-#include "image/threaded_loop.h"
+//#include "image/threaded_loop.h"
 #include "image/transform.h"
 
 #include "math/math.h"
@@ -266,7 +266,6 @@ namespace MR
           node_geometry_combobox->setToolTip (tr ("The 3D geometrical shape used to draw each node"));
           node_geometry_combobox->addItem ("Sphere");
           node_geometry_combobox->addItem ("Cube");
-          node_geometry_combobox->addItem ("Point");
           node_geometry_combobox->addItem ("Overlay");
           node_geometry_combobox->addItem ("Mesh");
           connect (node_geometry_combobox, SIGNAL (activated(int)), this, SLOT (node_geometry_selection_slot (int)));
@@ -290,13 +289,6 @@ namespace MR
           node_geometry_overlay_interp_checkbox->setVisible (false);
           connect (node_geometry_overlay_interp_checkbox, SIGNAL (stateChanged(int)), this, SLOT(overlay_interp_slot(int)));
           hlayout->addWidget (node_geometry_overlay_interp_checkbox, 1);
-          node_geometry_point_round_checkbox = new QCheckBox ("Round");
-          node_geometry_point_round_checkbox->setToolTip (tr ("Draw round points for each node, instead of square ones"));
-          node_geometry_point_round_checkbox->setTristate (false);
-          node_geometry_point_round_checkbox->setChecked (true);
-          node_geometry_point_round_checkbox->setVisible (false);
-          connect (node_geometry_point_round_checkbox, SIGNAL (stateChanged(int)), this, SLOT(point_smooth_slot(int)));
-          hlayout->addWidget (node_geometry_point_round_checkbox, 1);
           node_geometry_overlay_3D_warning_icon = new QLabel();
           node_geometry_overlay_3D_warning_icon->setPixmap (warning_icon.pixmap (node_geometry_combobox->height()));
           node_geometry_overlay_3D_warning_icon->setToolTip ("The node overlay image can only be displayed in pure 2D mode (slab thickness of zero)");
@@ -709,6 +701,8 @@ namespace MR
           window().addDockWidget (Qt::RightDockWidgetArea, node_list);
           connect (&node_selection_settings, SIGNAL(dataChanged()), this, SLOT (node_selection_settings_changed_slot()));
 
+          Window::GrabContext context;
+
           cube.generate();
           cube_VAO.gen();
           cube_VAO.bind();
@@ -836,15 +830,16 @@ namespace MR
           if (path.empty())
             return;
 
-          // If a new parcellation image is opened, all other data should be invalidated
-          clear_all();
-
           // Read in the image file, do the necessary conversions e.g. to mesh, store the number of nodes, ...
-          initialise (path);
-
-          image_button->setText (QString::fromStdString (Path::basename (path)));
-          load_properties();
-          enable_all (true);
+          try {
+            initialise (path);
+            image_button->setText (QString::fromStdString (Path::basename (path)));
+            load_properties();
+            enable_all (true);
+          } catch (Exception& e) {
+            e.display();
+            // If importing a new image has failed, but another image was loaded previously, keep existing data
+          }
           window().updateGL();
         }
 
@@ -1115,7 +1110,6 @@ namespace MR
               node_geometry_sphere_lod_label->setVisible (true);
               node_geometry_sphere_lod_spinbox->setVisible (true);
               node_geometry_overlay_interp_checkbox->setVisible (false);
-              node_geometry_point_round_checkbox->setVisible (false);
               break;
             case 1:
               if (node_geometry == node_geometry_t::CUBE) return;
@@ -1126,20 +1120,8 @@ namespace MR
               node_geometry_sphere_lod_label->setVisible (false);
               node_geometry_sphere_lod_spinbox->setVisible (false);
               node_geometry_overlay_interp_checkbox->setVisible (false);
-              node_geometry_point_round_checkbox->setVisible (false);
               break;
             case 2:
-              if (node_geometry == node_geometry_t::POINT) return;
-              node_geometry = node_geometry_t::POINT;
-              node_size_combobox->setEnabled (true);
-              node_size_button->setVisible (true);
-              node_size_button->setMax (std::numeric_limits<float>::max());
-              node_geometry_sphere_lod_label->setVisible (false);
-              node_geometry_sphere_lod_spinbox->setVisible (false);
-              node_geometry_overlay_interp_checkbox->setVisible (false);
-              node_geometry_point_round_checkbox->setVisible (true);
-              break;
-            case 3:
               if (node_geometry == node_geometry_t::OVERLAY) return;
               node_geometry = node_geometry_t::OVERLAY;
               node_size = node_size_t::FIXED;
@@ -1154,11 +1136,10 @@ namespace MR
               node_geometry_sphere_lod_label->setVisible (false);
               node_geometry_sphere_lod_spinbox->setVisible (false);
               node_geometry_overlay_interp_checkbox->setVisible (true);
-              node_geometry_point_round_checkbox->setVisible (false);
               node_geometry_overlay_3D_warning_icon->setVisible (is_3D);
               update_node_overlay();
               break;
-            case 4:
+            case 3:
               try {
                 // Re-prompt user if they are already displaying meshes and they re-select the mesh option
                 if (!have_meshes || node_geometry == node_geometry_t::MESH) {
@@ -1186,7 +1167,6 @@ namespace MR
                 node_geometry_sphere_lod_label->setVisible (false);
                 node_geometry_sphere_lod_spinbox->setVisible (false);
                 node_geometry_overlay_interp_checkbox->setVisible (false);
-                node_geometry_point_round_checkbox->setVisible (false);
               } catch (Exception& e) {
                 e.display();
                 for (auto i = nodes.begin(); i != nodes.end(); ++i)
@@ -1200,7 +1180,6 @@ namespace MR
                 node_geometry_sphere_lod_label->setVisible (true);
                 node_geometry_sphere_lod_spinbox->setVisible (true);
                 node_geometry_overlay_interp_checkbox->setVisible (false);
-                node_geometry_point_round_checkbox->setVisible (false);
               }
               break;
           }
@@ -1667,10 +1646,6 @@ namespace MR
           assert (node_overlay);
           node_visibility_warning_icon->setVisible (node_visibility == node_visibility_t::NONE);
           node_overlay->set_interpolate (node_geometry_overlay_interp_checkbox->isChecked());
-          window().updateGL();
-        }
-        void Connectome::point_smooth_slot (int)
-        {
           window().updateGL();
         }
         void Connectome::node_colour_matrix_operator_slot (int value)
@@ -2345,10 +2320,13 @@ namespace MR
                 MR::Image::Adapter::Subset<decltype(voxel)> subset (voxel, node_lower_corners[node_index], node_upper_corners[node_index] - node_lower_corners[node_index] + Point<int> (1, 1, 1));
 
                 std::shared_ptr< MR::Image::BufferScratch<bool> > node_mask (new MR::Image::BufferScratch<bool> (subset.info(), "Node " + str(node_index) + " mask"));
-                auto voxel = node_mask->voxel();
+                auto v_mask = node_mask->voxel();
 
-                auto copy_func = [&] (const decltype(subset)& in, decltype(voxel)& out) { out.value() = (in.value() == node_index); };
-                MR::Image::ThreadedLoop (subset).run (copy_func, subset, voxel);
+                //auto copy_func = [&] (const decltype(subset)& in, decltype(voxel)& out) { out.value() = (in.value() == node_index); };
+                //MR::Image::ThreadedLoop (subset).run (copy_func, subset, voxel);
+                MR::Image::LoopInOrder loop (v_mask);
+                for (auto i = loop (subset, v_mask); i; ++i)
+                  v_mask.value() = (subset.value() == node_index);
 
                 nodes.push_back (Node (node_coms[node_index], node_volumes[node_index], pixheight, node_mask));
 
@@ -2449,12 +2427,6 @@ namespace MR
                   gl::DepthMask (gl::FALSE_);
               }
 
-              if (node_geometry == node_geometry_t::POINT) {
-                if (node_geometry_point_round_checkbox->isChecked())
-                  gl::Enable (GL_POINT_SMOOTH);
-                gl::Enable (GL_PROGRAM_POINT_SIZE);
-              }
-
               const GLuint node_colour_ID = gl::GetUniformLocation (node_shader, "node_colour");
 
               GLuint node_alpha_ID = 0;
@@ -2479,7 +2451,7 @@ namespace MR
               }
 
               GLuint specular_ID = 0;
-              if (use_lighting() && node_geometry != node_geometry_t::POINT) {
+              if (use_lighting()) {
                 gl::UniformMatrix4fv (gl::GetUniformLocation (node_shader, "MV"), 1, gl::FALSE_, projection.modelview());
                 gl::Uniform3fv (gl::GetUniformLocation (node_shader, "light_pos"), 1, lighting.lightpos);
                 gl::Uniform1f  (gl::GetUniformLocation (node_shader, "ambient"), lighting.ambient);
@@ -2532,11 +2504,6 @@ namespace MR
                       }
                       gl::DrawElements (gl::TRIANGLES, cube.num_indices, gl::UNSIGNED_INT, (void*)0);
                       break;
-                    case node_geometry_t::POINT:
-                      glBegin (GL_POINTS);
-                      glVertex3fv (node.get_com());
-                      glEnd();
-                      break;
                     case node_geometry_t::OVERLAY:
                       assert (0);
                       break;
@@ -2558,12 +2525,6 @@ namespace MR
               if (alpha) {
                 gl::Disable (gl::BLEND);
                 gl::DepthMask (gl::TRUE_);
-              }
-
-              if (node_geometry == node_geometry_t::POINT) {
-                gl::Disable (GL_PROGRAM_POINT_SIZE);
-                if (node_geometry_point_round_checkbox->isChecked())
-                  gl::Disable (GL_POINT_SMOOTH);
               }
 
               node_shader.stop();
@@ -2658,7 +2619,7 @@ namespace MR
                   gl::Uniform1f (edge_alpha_ID, edge_alpha_given_selection (edge) * edge_fixed_alpha);
                 switch (edge_geometry) {
                   case edge_geometry_t::LINE:
-                    gl::LineWidth (edge_size_given_selection (edge) * edge_size_scale_factor);
+                    gl::LineWidth (calc_line_width (edge_size_given_selection (edge) * edge_size_scale_factor, edge_geometry_line_smooth_checkbox->isChecked()));
                     edge.render_line();
                     break;
                   case edge_geometry_t::CYLINDER:
@@ -2676,7 +2637,7 @@ namespace MR
                     gl::DrawElements (gl::TRIANGLES, cylinder.num_indices, gl::UNSIGNED_INT, (void*)0);
                     break;
                   case edge_geometry_t::STREAMLINE:
-                    gl::LineWidth (edge_size_given_selection (edge) * edge_size_scale_factor);
+                    gl::LineWidth (calc_line_width (edge_size_given_selection (edge) * edge_size_scale_factor, edge_geometry_line_smooth_checkbox->isChecked()));
                     edge.render_streamline();
                     break;
                   case edge_geometry_t::STREAMTUBE:
@@ -3136,7 +3097,11 @@ namespace MR
               }
             };
 
-            MR::Image::ThreadedLoop (v_in).run (functor, v_in, v_out);
+            //MR::Image::ThreadedLoop (v_in).run (functor, v_in, v_out);
+            MR::Image::LoopInOrder loop (v_in);
+            for (auto i = loop (v_in, v_out); i; ++i)
+              functor (v_in, v_out);
+
           }
         }
 
@@ -3494,6 +3459,7 @@ namespace MR
           if (meshes.size() != nodes.size())
             throw Exception ("Mesh file contains " + str(meshes.size()) + " objects; expected " + str(nodes.size()));
           have_meshes = false;
+          Window::GrabContext context;
           for (node_t i = 1; i <= num_nodes(); ++i)
             nodes[i].assign_mesh (meshes[i]);
           have_meshes = true;
@@ -3511,13 +3477,13 @@ namespace MR
           const size_t num_tracks = to<size_t>(properties["count"]);
           if (num_tracks != num_edges())
             throw Exception ("Track file " + Path::basename (path) + " contains " + str(num_tracks) + " streamlines; connectome expects " + str(num_edges()) + " exemplars");
-          auto source = [&] (MR::DWI::Tractography::Streamline<float>& out) { return reader (out); };
-          std::mutex mutex;
-          ProgressBar progress ("Generating connection exemplars... ", num_edges());
-          auto sink = [&] (const MR::DWI::Tractography::Streamline<float>& in) { edges[in.index].load_exemplar (in); std::lock_guard<std::mutex> lock (mutex); ++progress; return true; };
-          Thread::run_queue (source, MR::DWI::Tractography::Streamline<float>(), Thread::multi (sink));
-          for (auto i = edges.begin(); i != edges.end(); ++i)
-            i->create_streamline();
+          ProgressBar progress ("Importing connection exemplars... ", num_edges());
+          MR::DWI::Tractography::Streamline<float> tck;
+          while (reader (tck)) {
+            edges[tck.index].load_exemplar (tck);
+            edges[tck.index].create_streamline();
+            ++progress;
+          }
           have_exemplars = true;
         }
 
@@ -3560,6 +3526,28 @@ namespace MR
           if (selected_node_count && (node_selection_settings.get_edge_selected_alpha_multiplier() < 1.0f || node_selection_settings.get_edge_associated_alpha_multiplier() < 1.0f || node_selection_settings.get_edge_other_alpha_multiplier() < 1.0f))
             alpha = true;
           return alpha;
+        }
+
+
+
+
+
+
+        float Connectome::calc_line_width (const float desired_width, const bool is_smooth) const
+        {
+          if (is_smooth) {
+            if (line_thickness_range_smooth[0] && std::round (desired_width) < line_thickness_range_smooth[0])
+              return line_thickness_range_smooth[0];
+            if (line_thickness_range_smooth[1] && std::round (desired_width) > line_thickness_range_smooth[1])
+              return line_thickness_range_smooth[1];
+            return desired_width;
+          } else {
+            if (line_thickness_range_aliased[0] && std::round (desired_width) < line_thickness_range_aliased[0])
+              return line_thickness_range_aliased[0];
+            if (line_thickness_range_aliased[1] && std::round (desired_width) > line_thickness_range_aliased[1])
+              return line_thickness_range_aliased[1];
+            return desired_width;
+          }
         }
 
 
