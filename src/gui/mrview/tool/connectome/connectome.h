@@ -352,7 +352,8 @@ namespace MR
             // Helper functions
             void clear_all();
             void enable_all (const bool);
-            void initialise (const std::string&);
+            void check_parc_header (const MR::Image::Header&) const;
+            void initialise (const MR::Image::Header&);
 
             void draw_nodes (const Projection&);
             void draw_edges (const Projection&);
@@ -405,6 +406,17 @@ namespace MR
 
             friend class Node_list;
             friend class Node_list_model;
+
+            class InitThread : public QThread {
+              public:
+                InitThread (Connectome& master, const MR::Image::Header& header) : connectome (master), H (header) { H.__set_handler (header.__get_handler()); }
+                void run () override { connectome.initialise (H); }
+              private:
+                Connectome& connectome;
+                MR::Image::Header H;
+            };
+          private slots:
+            void init_thread_finished();
 
         };
 

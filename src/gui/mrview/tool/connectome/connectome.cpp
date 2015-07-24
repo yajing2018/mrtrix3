@@ -33,7 +33,7 @@
 #include "image/info.h"
 #include "image/loop.h"
 #include "image/nav.h"
-//#include "image/threaded_loop.h"
+#include "image/threaded_loop.h"
 #include "image/transform.h"
 
 #include "math/math.h"
@@ -54,6 +54,16 @@ namespace MR
     {
       namespace Tool
       {
+
+
+        // Elements to handle multi-threading with progress bar
+        namespace
+        {
+          QThread* running_thread = nullptr;
+        }
+        void Connectome::init_thread_finished() { assert (running_thread); delete running_thread; running_thread = nullptr; }
+
+
 
 
 
@@ -813,7 +823,13 @@ namespace MR
         {
           if (opt.opt->is ("connectome.load")) {
             try {
-              initialise (opt[0]);
+              MR::Image::Header H (opt[0]);
+              check_parc_header (H);
+
+              running_thread = new InitThread (*this, H);
+              connect (running_thread, SIGNAL (finished()), this, SLOT (init_thread_finished()));
+              running_thread->start();
+
               image_button->setText (QString::fromStdString (Path::basename (opt[0])));
               load_properties();
               enable_all (true);
@@ -832,7 +848,13 @@ namespace MR
 
           // Read in the image file, do the necessary conversions e.g. to mesh, store the number of nodes, ...
           try {
-            initialise (path);
+            MR::Image::Header H (path);
+            check_parc_header (H);
+
+            running_thread = new InitThread (*this, H);
+            connect (running_thread, SIGNAL (finished()), this, SLOT (init_thread_finished()));
+            running_thread->start();
+
             image_button->setText (QString::fromStdString (Path::basename (path)));
             load_properties();
             enable_all (true);
@@ -2265,15 +2287,18 @@ namespace MR
           edge_alpha_invert_checkbox->setEnabled (value);
         }
 
-        void Connectome::initialise (const std::string& path)
+        void Connectome::check_parc_header (const MR::Image::Header& H) const
         {
-          MR::Image::Header H (path);
           if (!H.datatype().is_integer())
             throw Exception ("Input parcellation image must have an integer datatype");
           if (H.ndim() != 3)
             throw Exception ("Input parcellation image must be a 3D image");
+        }
+
+        void Connectome::initialise (const MR::Image::Header& H)
+        {
           voxel_volume = H.vox(0) * H.vox(1) * H.vox(2);
-          buffer.reset (new MR::Image::BufferPreload<node_t> (path));
+          buffer.reset (new MR::Image::BufferPreload<node_t> (H));
           auto voxel = buffer->voxel();
           MR::Image::Transform transform (H);
           std::vector< Point<float> > node_coms;
@@ -2322,11 +2347,11 @@ namespace MR
                 std::shared_ptr< MR::Image::BufferScratch<bool> > node_mask (new MR::Image::BufferScratch<bool> (subset.info(), "Node " + str(node_index) + " mask"));
                 auto v_mask = node_mask->voxel();
 
-                //auto copy_func = [&] (const decltype(subset)& in, decltype(voxel)& out) { out.value() = (in.value() == node_index); };
-                //MR::Image::ThreadedLoop (subset).run (copy_func, subset, voxel);
-                MR::Image::LoopInOrder loop (v_mask);
-                for (auto i = loop (subset, v_mask); i; ++i)
-                  v_mask.value() = (subset.value() == node_index);
+                auto copy_func = [&] (const decltype(subset)& in, decltype(voxel)& out) { out.value() = (in.value() == node_index); };
+                MR::Image::ThreadedLoop (subset).run (copy_func, subset, voxel);
+                //MR::Image::LoopInOrder loop (v_mask);
+                //for (auto i = loop (subset, v_mask); i; ++i)
+                //  v_mask.value() = (subset.value() == node_index);
 
                 nodes.push_back (Node (node_coms[node_index], node_volumes[node_index], pixheight, node_mask));
 
@@ -3097,10 +3122,10 @@ namespace MR
               }
             };
 
-            //MR::Image::ThreadedLoop (v_in).run (functor, v_in, v_out);
-            MR::Image::LoopInOrder loop (v_in);
-            for (auto i = loop (v_in, v_out); i; ++i)
-              functor (v_in, v_out);
+            MR::Image::ThreadedLoop (v_in).run (functor, v_in, v_out);
+            //MR::Image::LoopInOrder loop (v_in);
+            //for (auto i = loop (v_in, v_out); i; ++i)
+            //  functor (v_in, v_out);
 
           }
         }
