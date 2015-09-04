@@ -120,7 +120,7 @@ namespace MR
 
 
             bool operator() (GeneratedTrack& item) {
-              rng = &thread_local_RNG;
+              //rng = &thread_local_RNG;
               if (!gen_track (item))
                 return false;
               if (track_rejected (item))

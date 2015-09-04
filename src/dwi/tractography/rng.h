@@ -33,11 +33,7 @@ namespace MR
     {
 
       //! thread-local, but globally accessible RNG to vastly simplify multi-threading
-#ifdef MRTRIX_MACOSX
-      extern __thread Math::RNG* rng;
-#else
-      extern thread_local Math::RNG* rng;
-#endif 
+      Math::RNG& rng ();
 
     }
   }

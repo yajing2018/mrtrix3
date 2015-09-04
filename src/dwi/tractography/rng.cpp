@@ -7,11 +7,10 @@ namespace MR
     namespace Tractography
     {
 
-#ifdef MRTRIX_MACOSX
-      __thread Math::RNG* rng = nullptr;
-#else
-      thread_local Math::RNG* rng = nullptr;
-#endif 
+      Math::RNG& rng () {
+        static thread_local Math::RNG thread_local_rng;
+        return thread_local_rng;
+      }
 
     }
   }
