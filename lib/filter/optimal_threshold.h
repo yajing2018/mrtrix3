@@ -187,7 +187,7 @@ namespace MR
           typedef typename ImageType::value_type input_value_type;
 
           input_value_type min, max;
-          min_max (input, min, max);
+          min_max (input, mask, min, max);
 
           input_value_type optimal_threshold = 0.0;
           {
