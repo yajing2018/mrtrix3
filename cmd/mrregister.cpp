@@ -12,7 +12,7 @@
  * For more details, see www.mrtrix.org
  *
  */
-
+#include "debug_memory.h"
 #include "command.h"
 #include "image.h"
 #include "filter/reslice.h"
@@ -111,9 +111,11 @@ typedef double value_type;
 
 void run ()
 {
-
+  VAR(getCurrentRSS_MB( ));
   Image<value_type> im1_image = Image<value_type>::open (argument[0]).with_direct_io (Stride::contiguous_along_axis (3));
+  VAR(getCurrentRSS_MB( ));
   Image<value_type> im2_image = Image<value_type>::open (argument[1]).with_direct_io (Stride::contiguous_along_axis (3));
+  VAR(getCurrentRSS_MB( ));
 
   if (im1_image.ndim() != im2_image.ndim())
     throw Exception ("input images do not have the same number of dimensions");

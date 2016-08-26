@@ -311,15 +311,20 @@ namespace MR
               }
 
               INFO("smoothing image 1");
+              VAR(getCurrentRSS_MB( ));
               auto im1_smoothed = Registration::multi_resolution_lmax (im1_image, scale_factor[level], do_reorientation, fod_lmax[level]);
+              VAR(getCurrentRSS_MB( ));
               INFO("smoothing image 2");
               auto im2_smoothed = Registration::multi_resolution_lmax (im2_image, scale_factor[level], do_reorientation, fod_lmax[level]);
+              VAR(getCurrentRSS_MB( ));
 
               Filter::Resize midway_resize_filter (midway_image_header);
               midway_resize_filter.set_scale_factor (scale_factor[level]);
               Header midway_resized (midway_resize_filter);
 
+              VAR(getCurrentRSS_MB( ));
               ParamType parameters (transform, im1_smoothed, im2_smoothed, midway_resized, im1_mask, im2_mask);
+              VAR(getCurrentRSS_MB( ));
               parameters.loop_density = loop_density[level];
               // if (robust_estimate)
               //   INFO ("using robust estimate");

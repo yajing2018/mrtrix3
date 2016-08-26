@@ -1,21 +1,22 @@
 /*
  * Copyright (c) 2008-2016 the MRtrix3 contributors
- * 
+ *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/
- * 
+ *
  * MRtrix is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * 
+ *
  * For more details, see www.mrtrix.org
- * 
+ *
  */
 
 #ifndef __image_filter_gaussian_h__
 #define __image_filter_gaussian_h__
 
+#include "debug_memory.h"
 #include "memory.h"
 #include "image.h"
 #include "algo/copy.h"
@@ -101,7 +102,7 @@ namespace MR
         //! This must be set as a single value to be used for the first 3 dimensions
         //! or separate values, one for each dimension. (Default: 1 voxel)
         void set_stdev (const std::vector<default_type>& std_dev)
-        { 
+        {
           for (size_t i = 0; i < std_dev.size(); ++i)
             if (stdev[i] < 0.0)
               throw Exception ("the Gaussian stdev values cannot be negative");
@@ -120,7 +121,10 @@ namespace MR
         template <class InputImageType, class OutputImageType, typename ValueType = float>
         void operator() (InputImageType& input, OutputImageType& output)
         {
+          VAR(getCurrentRSS_MB( ));
+          DEBUG ("in (std::make_shared<Image<ValueType> > (Image<ValueType>::scratch (input)))");
           std::shared_ptr <Image<ValueType> > in (std::make_shared<Image<ValueType> > (Image<ValueType>::scratch (input)));
+          VAR(getCurrentRSS_MB( ));
           threaded_copy (input, *in);
           std::shared_ptr <Image<ValueType> > out;
 
@@ -135,10 +139,16 @@ namespace MR
 
           for (size_t dim = 0; dim < 3; dim++) {
             if (stdev[dim] > 0) {
+              VAR(getCurrentRSS_MB( ));
+              DEBUG ("creating scratch image for smoothing image along dimension " + str(dim));
               out = std::make_shared<Image<ValueType> > (Image<ValueType>::scratch (input));
+              VAR(getCurrentRSS_MB( ));
               Adapter::Gaussian1D<Image<ValueType> > gaussian (*in, stdev[dim], dim, extent[dim], zero_boundary);
               threaded_copy (gaussian, *out, 0, input.ndim(), 2);
+              VAR(getCurrentRSS_MB( ));
+              DEBUG ("in = out");
               in = out;
+              VAR(getCurrentRSS_MB( ));
               if (progress)
                 ++(*progress);
             }

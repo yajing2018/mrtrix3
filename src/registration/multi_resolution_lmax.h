@@ -45,6 +45,7 @@ namespace MR
         stdev[dim] = input.spacing(dim) / (2.0 * scale_factor);
 
       smooth_filter.set_stdev (stdev);
+      DEBUG ("creating scratch image for smoothing input image...");
       auto smoothed = ImageType::scratch (smooth_filter);
 
       DEBUG ("smoothing input image based on scale factor...");
