@@ -22,6 +22,7 @@
 #include "algo/copy.h"
 #include "algo/threaded_copy.h"
 #include "adapter/gaussian1D.h"
+#include "adapter/gaussian1D_buffered.h"
 #include "filter/base.h"
 
 namespace MR
@@ -52,6 +53,7 @@ namespace MR
             Base (in),
             extent (3, 0),
             stdev (3, 0.0),
+            stride_order (Stride::order (in)),
             zero_boundary (false)
         {
           for (int i = 0; i < 3; i++)
@@ -63,7 +65,8 @@ namespace MR
         Smooth (const HeaderType& in, const std::vector<default_type>& stdev_in):
             Base (in),
             extent (3, 0),
-            stdev (3, 0.0)
+            stdev (3, 0.0),
+            stride_order (Stride::order (in))
         {
           set_stdev (stdev_in);
           datatype() = DataType::Float32;
@@ -139,7 +142,6 @@ namespace MR
 
           for (size_t dim = 0; dim < 3; dim++) {
             if (stdev[dim] > 0) {
-              VAR(getCurrentRSS_MB( ));
               DEBUG ("creating scratch image for smoothing image along dimension " + str(dim));
               out = std::make_shared<Image<ValueType> > (Image<ValueType>::scratch (input));
               VAR(getCurrentRSS_MB( ));
@@ -156,9 +158,41 @@ namespace MR
           threaded_copy (*in, output);
         }
 
+        //! Smooth the image in place
+        template <class ImageType>
+        void operator() (ImageType& in_and_output)
+        {
+          std::unique_ptr<ProgressBar> progress;
+          if (message.size()) {
+            size_t axes_to_smooth = 0;
+            for (std::vector<default_type>::const_iterator i = stdev.begin(); i != stdev.end(); ++i)
+              if (*i)
+                ++axes_to_smooth;
+            progress.reset (new ProgressBar (message, axes_to_smooth + 1));
+          }
+
+          for (size_t dim = 0; dim < 3; dim++) {
+            if (stdev[dim] > 0) {
+              Adapter::Gaussian1DBuffered<ImageType> gaussian (in_and_output, stdev[dim], dim, extent[dim], zero_boundary);
+              std::vector<size_t> axes (in_and_output.ndim(), dim);
+              size_t axdim = 1;
+              for (size_t i = 0; i < in_and_output.ndim(); ++i) {
+                if (stride_order[i] == dim)
+                  continue;
+                axes[axdim++] = stride_order[i];
+              }
+              DEBUG ("smoothing dimension " + str(dim) + " in place with stride order: " + str(axes));
+              threaded_copy (gaussian, in_and_output, axes, 1);
+              if (progress)
+                ++(*progress);
+            }
+          }
+        }
+
       protected:
         std::vector<int> extent;
         std::vector<default_type> stdev;
+        const std::vector<size_t> stride_order;
         bool zero_boundary;
     };
     //! @}
