@@ -50,8 +50,13 @@ void usage ()
     + Option ("mask", "define the mask to compute the normalisation within. If not supplied this is estimated automatically")
     + Argument ("image").type_image_in ()
 
+    + Option ("is_initial_mask", "Provided mask gets refined. Default: False")
+
     + Option ("value", "specify the value to which the summed tissue compartments will be normalised to "
                        "(Default: sqrt(1/(4*pi)) = " + str(DEFAULT_NORM_VALUE, 6) + ")")
+    + Argument ("number").type_float ()
+
+    + Option ("huber_thresh", "robust estimator kernel threshold ")
     + Argument ("number").type_float ()
 
     + Option ("bias", "output the estimated bias field")
@@ -144,16 +149,27 @@ void run ()
     output_filenames.push_back (argument[i + 1]);
   }
 
+  float huber_thresh = 0.0;
+  auto opt = get_options ("huber_thresh");
+  if (opt.size()) {
+    huber_thresh = opt[0][0];
+    if (huber_thresh <= 0.0)
+      throw Exception ("huber_thresh needs to be positive");
+    if (huber_thresh > 4.0)
+      WARN ("huber_thresh is quite large");
+  }
+
   // Load or compute a mask to work with
   Image<bool> mask;
-  bool user_supplied_mask = false;
+  const bool constant_mask = not get_option_value ("is_initial_mask", false);
   Header header_3D (input_images[0]);
   header_3D.ndim() = 3;
-  auto opt = get_options ("mask");
+  opt = get_options ("mask");
   if (opt.size()) {
     mask = Image<bool>::open (opt[0][0]);
-    user_supplied_mask = true;
   } else {
+    if (constant_mask)
+      throw Exception ("-constant_mask option selected but no mask provided");
     auto summed = Image<float>::scratch (header_3D);
     for (size_t j = 0; j < input_images.size(); ++j) {
       for (auto i = Loop (summed, 0, 3) (summed, input_images[j]); i; ++i)
@@ -205,7 +221,58 @@ void run ()
       }
     }
     progress++;
-    scale_factors = X.colPivHouseholderQr().solve(y);
+
+    Eigen::VectorXd rel_residuals (num_voxels);
+    if (huber_thresh == 0.0) {
+      scale_factors = X.colPivHouseholderQr().solve(y);
+      rel_residuals = (X*scale_factors - y);
+      rel_residuals *= 1.0f / normalisation_value;
+    } else {
+      Eigen::MatrixXd work(X.cols(),X.cols());
+      Eigen::LLT<Eigen::MatrixXd> llt(work.rows());
+
+      work.setZero();
+      work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose());
+
+      scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve(X.transpose()*y);
+
+      const int maxit = 10;
+      Eigen::VectorXd w (num_voxels);
+
+      for (int it = 0; it < maxit; it++) {
+        w = Eigen::VectorXd::Ones(num_voxels);
+        rel_residuals = (X*scale_factors - y);
+        rel_residuals *= 1.0f / normalisation_value;
+        for (size_t i = 0; i < num_voxels; i++) {
+          // if (rel_residuals[i] < (-1.0f * huber_thresh))
+          if (std::abs(rel_residuals[i]) > huber_thresh)
+            w(i) = huber_thresh / std::abs(rel_residuals[i]);
+        }
+
+        work.setZero();
+        work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose() * w.asDiagonal());
+
+        w.array() = w.array().square();
+        scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve((X.transpose()*w.asDiagonal()*y));
+        DEBUG ("               " + str(scale_factors.transpose()));
+      }
+    }
+    // if (true) {
+    INFO("bias: " + str((X.colwise().mean() * scale_factors)/normalisation_value));
+    if (log_level >= 3) {
+      Header header (input_images[0]);
+      header.ndim() = 3;
+      auto residuals = Image<float>::scratch (header);
+      size_t idx = 0;
+      for (auto i = Loop (mask) (mask); i; ++i) {
+        if (mask.value()) {
+          assign_pos_of (mask, 0, 3).to (residuals);
+          residuals.value() = rel_residuals(idx++);
+        }
+      }
+      display (residuals);
+    }
+
     progress++;
 
     INFO ("scale factors: " + str(scale_factors.transpose()));
@@ -254,14 +321,14 @@ void run ()
     Eigen::MatrixXd diff;
     if (iter > 1) {
       diff = previous_scale_factors.array() - scale_factors.array();
-      diff = diff.array().abs() / previous_scale_factors.array();
+      diff = (diff.array().abs() / previous_scale_factors.array()).eval();
       INFO ("percentage change in estimated scale factors: " + str(diff.mean() * 100));
       if (diff.mean() < 0.001)
         converged = true;
     }
 
     // Revaluate mask
-    if (!converged && !user_supplied_mask) {
+    if (!converged && !constant_mask) {
       auto summed = Image<float>::scratch (header_3D);
       for (size_t j = 0; j < input_images.size(); ++j) {
         for (auto i = Loop (summed, 0, 3) (summed, input_images[j], bias_field); i; ++i)
@@ -293,8 +360,10 @@ void run ()
           }
         }
       }
-      if (log_level >= 3)
+      if (log_level >= 3){
+        display (summed);
         display (mask);
+      }
     }
 
     previous_scale_factors = scale_factors;
