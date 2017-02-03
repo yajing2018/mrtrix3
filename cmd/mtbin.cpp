@@ -64,6 +64,8 @@ void usage ()
 
     + Option ("independent", "intensity normalise each tissue type independently")
 
+    + Option ("tls", "use total least squares estimator")
+
     + Option ("maxiter", "set the maximum number of iterations. Default(" + str(DEFAULT_MAXITER_VALUE) + "). "
                          "It will stop before the max iterations if convergence is detected")
     + Argument ("number").type_integer()
@@ -142,7 +144,7 @@ void run ()
       check_dimensions (input_images[0], input_images[i / 2], 0, 3);
 
     if (Path::exists (argument[i + 1]) && !App::overwrite_files)
-      throw Exception ("output file \"" + argument[i] + "\" already exists (use -force option to force overwrite)");
+      throw Exception ("output file \"" + argument[i + 1] + "\" already exists (use -force option to force overwrite)");
 
     // we can't create the image yet if we want to put the scale factor into the output header
     output_headers.emplace_back (Header::open (argument[i]));
@@ -161,7 +163,7 @@ void run ()
 
   // Load or compute a mask to work with
   Image<bool> mask;
-  const bool constant_mask = not get_option_value ("is_initial_mask", false);
+  const bool constant_mask = not get_option_value ("is_initial_mask", true);
   Header header_3D (input_images[0]);
   header_3D.ndim() = 3;
   opt = get_options ("mask");
@@ -223,38 +225,78 @@ void run ()
     progress++;
 
     Eigen::VectorXd rel_residuals (num_voxels);
-    if (huber_thresh == 0.0) {
-      scale_factors = X.colPivHouseholderQr().solve(y);
-      rel_residuals = (X*scale_factors - y);
-      rel_residuals *= 1.0f / normalisation_value;
+    if (get_options("tls").size()) {
+      const size_t num_tissue = input_images.size();
+
+      INFO("TLS");
+      if (huber_thresh != 0.0)
+        throw Exception("TLS with Huber not implemented");
+
+      const default_type epsilon (std::numeric_limits<float>::epsilon());
+      const default_type data_weighting (1.0e3 / normalisation_value);
+
+      Eigen::MatrixXd A (num_voxels, num_tissue + 1);
+      A.block(0,0,num_voxels, num_tissue) = X.block(0,0,num_voxels, num_tissue);
+      A.col(num_tissue) = -data_weighting * y;
+
+      // check rank of A
+      Eigen::FullPivLU<Eigen::MatrixXd> lu_decomp(A);
+      lu_decomp.setThreshold(1.0e-9); // num_tissue * epsilon
+      size_t rank = lu_decomp.rank();
+      if (rank != num_tissue + 1) {
+        MAT(X.block(0,0,X.rows() > 100 ? 100 : X.rows(),X.cols()));
+        WARN("input data collinear (rank:"+str(rank)+")");
+        throw Exception("rank deficient TLS not implemented");
+      }
+
+      Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeThinV);
+      DEBUG("singular values: " + str(svd.singularValues().transpose()));
+      // right singular vector corresponding to smallest eigenvector:
+      Eigen::VectorXd rsv = svd.matrixV().col(num_tissue);
+      DEBUG("right singular vector: " + str(rsv.transpose()));
+
+      // check existence of solution
+      if (std::abs(rsv(num_tissue)) < epsilon)
+        throw Exception ("no TLS solution exists");
+      if (std::abs(svd.singularValues()(num_tissue-1) - svd.singularValues()(num_tissue-2)) < epsilon)
+        WARN ("TLS solution not unique");
+      rsv.array() /= rsv(num_tissue);
+      scale_factors = rsv.head(num_tissue) / data_weighting;
     } else {
-      Eigen::MatrixXd work(X.cols(),X.cols());
-      Eigen::LLT<Eigen::MatrixXd> llt(work.rows());
-
-      work.setZero();
-      work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose());
-
-      scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve(X.transpose()*y);
-
-      const int maxit = 10;
-      Eigen::VectorXd w (num_voxels);
-
-      for (int it = 0; it < maxit; it++) {
-        w = Eigen::VectorXd::Ones(num_voxels);
+      INFO("OLS");
+      if (huber_thresh == 0.0) {
+        scale_factors = X.colPivHouseholderQr().solve(y);
         rel_residuals = (X*scale_factors - y);
         rel_residuals *= 1.0f / normalisation_value;
-        for (size_t i = 0; i < num_voxels; i++) {
-          // if (rel_residuals[i] < (-1.0f * huber_thresh))
-          if (std::abs(rel_residuals[i]) > huber_thresh)
-            w(i) = huber_thresh / std::abs(rel_residuals[i]);
-        }
+      } else {
+        Eigen::MatrixXd work(X.cols(),X.cols());
+        Eigen::LLT<Eigen::MatrixXd> llt(work.rows());
 
         work.setZero();
-        work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose() * w.asDiagonal());
+        work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose());
 
-        w.array() = w.array().square();
-        scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve((X.transpose()*w.asDiagonal()*y));
-        DEBUG ("               " + str(scale_factors.transpose()));
+        scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve(X.transpose()*y);
+
+        const int maxit = 10;
+        Eigen::VectorXd w (num_voxels);
+
+        for (int it = 0; it < maxit; it++) {
+          w = Eigen::VectorXd::Ones(num_voxels);
+          rel_residuals = (X*scale_factors - y);
+          rel_residuals *= 1.0f / normalisation_value;
+          for (size_t i = 0; i < num_voxels; i++) {
+            // if (rel_residuals[i] < (-1.0f * huber_thresh))
+            if (std::abs(rel_residuals[i]) > huber_thresh)
+              w(i) = huber_thresh / std::abs(rel_residuals[i]);
+          }
+
+          work.setZero();
+          work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose() * w.asDiagonal());
+
+          w.array() = w.array().square();
+          scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve((X.transpose()*w.asDiagonal()*y));
+          DEBUG ("               " + str(scale_factors.transpose()));
+        }
       }
     }
     // if (true) {

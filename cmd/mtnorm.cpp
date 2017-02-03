@@ -110,7 +110,7 @@ void run ()
       check_dimensions (input_images[0], input_images[i / 2], 0, 3);
 
     if (Path::exists (argument[i + 1]) && !App::overwrite_files)
-      throw Exception ("output file \"" + argument[i] + "\" already exists (use -force option to force overwrite)");
+      throw Exception ("output file \"" + argument[i + 1] + "\" already exists (use -force option to force overwrite)");
 
     // we can't create the image yet if we want to put the scale factor into the output header
     output_headers.emplace_back (Header::open (argument[i]));
@@ -180,41 +180,43 @@ void run ()
     // rel_residuals = (X*scale_factors - y);
     // rel_residuals *= 1.0f / normalisation_value;
 
-    Eigen::MatrixXd work(X.cols(),X.cols());
-    Eigen::LLT<Eigen::MatrixXd> llt(work.rows());
+    scale_factors = X.colPivHouseholderQr().solve(y);
 
-    work.setZero();
-    work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose());
+    // Eigen::MatrixXd work(X.cols(),X.cols());
+    // Eigen::LLT<Eigen::MatrixXd> llt(work.rows());
 
-    scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve(X.transpose()*y);
+    // work.setZero();
+    // work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose());
 
-    if (robust_iter > 0) {
-      Eigen::VectorXd w (num_voxels);
+    // scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve(X.transpose()*y);
 
-      for (size_t it = 0; it < robust_iter; it++) {
-        w = Eigen::VectorXd::Ones(num_voxels);
-        rel_residuals = (X*scale_factors - y);
-        rel_residuals *= 1.0f / normalisation_value;
-        for (size_t i = 0; i < num_voxels; i++) {
-          // if (rel_residuals[i] < (-1.0f * huber_thresh))
-          if (std::abs(rel_residuals[i]) > huber_thresh)
-            w(i) = huber_thresh / std::abs(rel_residuals[i]);
-        }
+    // if (robust_iter > 0) {
+    //   Eigen::VectorXd w (num_voxels);
 
-        work.setZero();
-        work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose() * w.asDiagonal());
+    //   for (size_t it = 0; it < robust_iter; it++) {
+    //     w = Eigen::VectorXd::Ones(num_voxels);
+    //     rel_residuals = (X*scale_factors - y);
+    //     rel_residuals *= 1.0f / normalisation_value;
+    //     for (size_t i = 0; i < num_voxels; i++) {
+    //       // if (rel_residuals[i] < (-1.0f * huber_thresh))
+    //       if (std::abs(rel_residuals[i]) > huber_thresh)
+    //         w(i) = huber_thresh / std::abs(rel_residuals[i]);
+    //     }
 
-        w.array() = w.array().square();
-        scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve((X.transpose()*w.asDiagonal()*y));
-        DEBUG ("               " + str(scale_factors.transpose()));
-      }
-    }
+    //     work.setZero();
+    //     work.selfadjointView<Eigen::Lower>().rankUpdate (X.transpose() * w.asDiagonal());
+
+    //     w.array() = w.array().square();
+    //     scale_factors = llt.compute (work.selfadjointView<Eigen::Lower>()).solve((X.transpose()*w.asDiagonal()*y));
+    //     DEBUG ("               " + str(scale_factors.transpose()));
+    //   }
+    // }
 
   } else if (do_tls) {
     INFO("TLS");
 
     const default_type epsilon (std::numeric_limits<float>::epsilon());
-    const default_type data_weighting (1.0e6 / normalisation_value);
+    const default_type data_weighting (1.0e3 / normalisation_value);
 
     Eigen::MatrixXd A (num_voxels, num_tissue + 1);
     A.block(0,0,num_voxels, num_tissue) = X.block(0,0,num_voxels, num_tissue);
