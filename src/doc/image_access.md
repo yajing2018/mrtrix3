@@ -72,14 +72,14 @@ converted to `Float32` data type:
 void run () 
 {
   // access the input image:
-  auto in = Image<float>::create (argument[0]);
+  auto in = Image<float>::open (argument[0]);
 
   // obtain and modify the image header:
   Header header (in);
   header.datatype() = DataType::Float32;
 
   // create the output image based on that header:
-  auto out = Image::create (argument[1], header);
+  auto out = Image<float>::create (argument[1], header);
 
   // create a Median adapter for the input voxel:
   std::vector<int> extent (1,3);
