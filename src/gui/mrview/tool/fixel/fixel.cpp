@@ -90,6 +90,7 @@ namespace MR
           Base (parent),
           do_lock_to_grid (true),
           do_crop_to_slice (true),
+          do_centre_field (false),
           not_3D (true),
           line_opacity (1.0) {
 
@@ -245,6 +246,12 @@ namespace MR
             crop_to_slice->setChecked (true);
             connect (crop_to_slice, SIGNAL (clicked (bool)), this, SLOT (on_crop_to_slice_slot (bool)));
             default_opt_grid->addWidget (crop_to_slice, 3, 0, 1, 2);
+
+            vector_field = new QGroupBox (tr("vector field"));
+            vector_field->setCheckable (true);
+            vector_field->setChecked (false);
+            connect (vector_field, SIGNAL (clicked (bool)), this, SLOT (on_vector_field_slot (bool)));
+            default_opt_grid->addWidget (vector_field, 4, 0, 1, 2);
 
             main_box->addLayout (default_opt_grid, 0);
 
@@ -627,9 +634,20 @@ namespace MR
 
         void Fixel::on_crop_to_slice_slot (bool is_checked)
         {
-          do_crop_to_slice = is_checked;         
+          do_crop_to_slice = is_checked;
           lock_to_grid->setEnabled(do_crop_to_slice);
+          window().updateGL();
+        }
 
+        void Fixel::on_vector_field_slot (bool is_checked)
+        {
+          do_centre_field = is_checked;
+          QModelIndexList indices = fixel_list_view->selectionModel()->selectedIndexes();
+          TRACE;
+          for (int i = 0; i < indices.size(); ++i) {
+            fixel_list_model->get_fixel_image (indices[i])->set_centred_in_origin(do_centre_field);
+            VAR(fixel_list_model->get_fixel_image (indices[i])->get_centred_in_origin());
+          }
           window().updateGL();
         }
 
@@ -769,7 +787,7 @@ namespace MR
 
 
         void Fixel::add_commandline_options (MR::App::OptionList& options)
-        { 
+        {
           using namespace MR::App;
           options
             + OptionGroup ("Fixel plot tool options")

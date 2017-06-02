@@ -47,7 +47,7 @@ namespace MR
 
               class Shader : public Displayable::Shader { MEMALIGN (Shader)
                 public:
-                  Shader () : do_crop_to_slice (false), color_type (Direction), scale_type (Value) { }
+                  Shader () : do_crop_to_slice (false), color_type (Direction), scale_type (Value), do_centre_field (false) { }
                   std::string vertex_shader_source   (const Displayable&) override;
                   std::string geometry_shader_source (const Displayable&) override;
                   std::string fragment_shader_source (const Displayable&) override;
@@ -57,6 +57,7 @@ namespace MR
                   bool do_crop_to_slice;
                   FixelColourType color_type;
                   FixelScaleType scale_type;
+                  bool do_centre_field;
               } fixel_shader;
 
 
@@ -91,6 +92,14 @@ namespace MR
 
               float get_line_thickenss () const {
                 return line_thickness;
+              }
+
+              void set_centred_in_origin (bool b) {
+                do_centre_field = b;
+              }
+
+              bool get_centred_in_origin () const {
+                return do_centre_field;
               }
 
               size_t get_scale_type_index () const {
@@ -275,6 +284,7 @@ namespace MR
               size_t colour_type_index;
               size_t scale_type_index;
               size_t threshold_type_index;
+              bool do_centre_field;
 
               bool colour_buffer_dirty;
               bool value_buffer_dirty;

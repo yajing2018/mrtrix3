@@ -34,6 +34,7 @@ namespace MR
           colour_type_index (0),
           scale_type_index (0),
           threshold_type_index (0),
+          do_centre_field (false),
           fixel_tool (fixel_tool),
           voxel_size_length_multipler (1.f),
           user_line_length_multiplier (1.f),
@@ -151,10 +152,15 @@ namespace MR
             default:
               break;
           }
-
-          source +=
+          if (do_centre_field)
+            source +=
+               "    vec4 start = MVP * (gl_in[0].gl_Position);\n"
+               "    vec4 end = MVP * (gl_in[0].gl_Position + 2*line_offset);\n";
+          else
+            source +=
                "    vec4 start = MVP * (gl_in[0].gl_Position - line_offset);\n"
-               "    vec4 end = MVP * (gl_in[0].gl_Position + line_offset);\n"
+               "    vec4 end = MVP * (gl_in[0].gl_Position + line_offset);\n";
+          source +=
                "    vec4 line = end - start;\n"
                "    vec4 normal =  normalize(vec4(-line.y, line.x, 0.0, 0.0));\n"
                "    vec4 thick_vec =  line_thickness * normal;\n"
@@ -200,6 +206,8 @@ namespace MR
         {
           const BaseFixel& fixel (dynamic_cast<const BaseFixel&> (object));
           do_crop_to_slice = fixel.fixel_tool.do_crop_to_slice;
+          do_centre_field = fixel.fixel_tool.do_centre_field;
+          VAR(do_centre_field);
           color_type = fixel.colour_type;
           scale_type = fixel.scale_type;
           Displayable::Shader::update (object);
@@ -218,6 +226,8 @@ namespace MR
 
           gl::Uniform1f (gl::GetUniformLocation (fixel_shader, "length_mult"), voxel_size_length_multipler * user_line_length_multiplier);
           gl::Uniform1f (gl::GetUniformLocation (fixel_shader, "line_thickness"), line_thickness);
+          VAR(do_centre_field);
+          gl::Uniform1f (gl::GetUniformLocation (fixel_shader, "do_centre_field"), do_centre_field);
 
           if (use_discard_lower())
             gl::Uniform1f (gl::GetUniformLocation (fixel_shader, "lower"), fixel_threshold.lessthan);
