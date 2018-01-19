@@ -33,9 +33,10 @@ namespace MR
 
     class Projection;
 
-    namespace GL 
+    namespace GL
     {
       class Lighting;
+      class mat4;
     }
 
     namespace DWI
@@ -66,8 +67,8 @@ namespace MR
             mode = i;
           }
 
-          void start (const Projection& projection, const GL::Lighting& lighting, float scale, 
-              bool use_lighting, bool color_by_direction, bool hide_neg_lobes, bool orthographic = false);
+          void start (const Projection& projection, const GL::Lighting& lighting, float scale,
+              bool use_lighting, bool color_by_direction, bool hide_neg_lobes, bool orthographic = false, const GL::mat4* colour_relative_to_projection = nullptr);
 
           void draw (const Eigen::Vector3f& origin, int buffer_ID = 0) const {
             (void) buffer_ID; // to silence unused-parameter warnings
@@ -101,10 +102,10 @@ namespace MR
           class Shader : public GL::Shader::Program { MEMALIGN(Shader)
             public:
               Shader () : mode_ (mode_t::SH), use_lighting_ (true), colour_by_direction_ (true), hide_neg_values_ (true), orthographic_ (false) { }
-              void start (mode_t mode, bool use_lighting, bool colour_by_direction, bool hide_neg_values, bool orthographic);
+              void start (mode_t mode, bool use_lighting, bool colour_by_direction, bool hide_neg_values, bool orthographic, bool colour_relative_to_projection);
             protected:
               mode_t mode_;
-              bool use_lighting_, colour_by_direction_, hide_neg_values_, orthographic_;
+              bool use_lighting_, colour_by_direction_, hide_neg_values_, orthographic_, colour_relative_to_projection_;
               std::string vertex_shader_source() const;
               std::string geometry_shader_source() const;
               std::string fragment_shader_source() const;
