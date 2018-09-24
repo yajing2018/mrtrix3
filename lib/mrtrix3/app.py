@@ -109,11 +109,11 @@ def init(author, synopsis): #pylint: disable=unused-variable
     except IOError:
       pass
   # Set up signal handlers
-  for s in _signals:
-    try:
-      signal.signal(getattr(signal, s), handler)
-    except:
-      pass
+ # for s in _signals:
+ #   try:
+ #     signal.signal(getattr(signal, s), handler)
+ #   except:
+ #     pass
 
 
 

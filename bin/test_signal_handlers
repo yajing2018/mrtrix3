@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+
+
+# Make the corresponding MRtrix3 Python libraries available
+import inspect, os, sys, subprocess
+lib_folder = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(inspect.getfile(inspect.currentframe()))), os.pardir, 'lib'))
+if not os.path.isdir(lib_folder):
+  sys.stderr.write('Unable to locate MRtrix3 Python libraries')
+  sys.exit(1)
+sys.path.insert(0, lib_folder)
+
+from mrtrix3 import app, run
+
+
+
+
+
+
+
+
+running_processes = []
+
+# Handler function for dealing with system signals
+def handler(signum, _frame):
+  import os, signal, sys, time
+  sys.stderr.write('\nstart signal handler\n\n')
+
+  time.sleep (5)
+  # inspect subprocesses:
+  # on Win10, they all seem to be marked <defunct> _before_ the explicit
+  # terminate below...
+
+  # Kill any child processes in the run module
+  while len (running_processes):
+    sys.stderr.write('  terminating ' + str(running_processes[0].pid) + '...\n')
+    running_processes[0].terminate()
+    del running_processes[0]
+
+  time.sleep (5)
+  # inspect subprocesses:
+  # one Win10: <defunct> processes now cleared, apart from one of
+  # them - not sure why...
+
+  sys.stderr.write('\nend signal handler\n\n')
+  exit (1)
+  # on Win10: any remaining <defunct> processes cleared at this point
+
+
+
+
+
+
+app.init('test', 'none')
+app.cmdline.add_argument ('bogus')
+
+app.parse()
+app.console ('running...')
+
+import signal
+signal.signal(signal.SIGINT, handler)
+
+
+
+running_processes.append (subprocess.Popen ([ './test_script' ], stdin=subprocess.PIPE, stderr=subprocess.PIPE))
+running_processes.append (subprocess.Popen ([ './test_script' ], stdin=subprocess.PIPE, stderr=subprocess.PIPE))
+running_processes.append (subprocess.Popen ([ './test_script' ], stdin=subprocess.PIPE, stderr=subprocess.PIPE))
+
+while len(running_processes):
+  running_processes[0].wait()
+  del running_processes[0]
+
+app.console ('done.')
+app.complete()
+

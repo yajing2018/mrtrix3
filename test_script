@@ -1,0 +1,6 @@
+#!/bin/bash
+
+echo script $$ starting...
+sleep 3;
+echo script $$ done
+
