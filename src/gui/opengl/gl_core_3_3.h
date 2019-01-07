@@ -105,7 +105,7 @@ using GLchar = char;
 using GLcharARB = char;
 
 #ifdef _WIN64
-using GLintptr = signed long long int
+using GLintptr = signed long long int;
 #else
 using GLintptr = signed long int;
 #endif
